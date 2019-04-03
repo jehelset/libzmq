@@ -723,6 +723,12 @@ set(cxx-sources
   epoll.cpp
   err.cpp
   fq.cpp
+  gssapi_client.cpp
+  gssapi_mechanism_base.cpp
+  gssapi_server.cpp
+  sspi_client.cpp
+  sspi_mechanism_base.cpp
+  sspi_server.cpp
   io_object.cpp
   io_thread.cpp
   ip.cpp
@@ -838,6 +844,9 @@ set(cxx-sources
   gssapi_client.hpp
   gssapi_mechanism_base.hpp
   gssapi_server.hpp
+  sspi_client.hpp
+  sspi_mechanism_base.hpp
+  sspi_server.hpp
   i_decoder.hpp
   i_encoder.hpp
   i_engine.hpp
