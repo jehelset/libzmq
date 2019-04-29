@@ -1437,7 +1437,7 @@ int zmq_has (const char *capability_)
     if (strcmp (capability_, "curve") == 0)
         return true;
 #endif
-#if defined(HAVE_LIBGSSAPI_KRB5)
+#if defined(HAVE_LIBGSSAPI_KRB5) || defined(HAVE_SSPI)
     if (strcmp (capability_, "gssapi") == 0)
         return true;
 #endif

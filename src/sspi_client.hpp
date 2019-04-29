@@ -64,9 +64,8 @@ class sspi_client_t : public sspi_mechanism_base_t
     };
 
     //  Human-readable principal name of the service we are connecting to
-    char *service_name;
-
-    //gss_OID service_name_type;
+    std::string service_name;
+    //std::vector<std::string> mechs;
 
     //  Current FSM state
     state_t state;

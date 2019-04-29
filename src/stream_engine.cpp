@@ -52,6 +52,8 @@
 #include "plain_server.hpp"
 #include "gssapi_client.hpp"
 #include "gssapi_server.hpp"
+#include "sspi_client.hpp"
+#include "sspi_server.hpp"
 #include "curve_client.hpp"
 #include "curve_server.hpp"
 #include "raw_decoder.hpp"
@@ -784,6 +786,21 @@ bool zmq::stream_engine_t::handshake_v3_0 ()
         else
             _mechanism =
               new (std::nothrow) gssapi_client_t (_session, _options);
+        alloc_assert (_mechanism);
+    }
+#endif
+//FIXME: these should be mutually exlusive - jeh
+#ifdef HAVE_SSPI
+    else if (_options.mechanism == ZMQ_GSSAPI
+             && memcmp (_greeting_recv + 12,
+                        "GSSAPI\0\0\0\0\0\0\0\0\0\0\0\0\0\0", 20)
+                  == 0) {
+        if (_options.as_server)
+            _mechanism = new (std::nothrow)
+              sspi_server_t (_session, _peer_address, _options);
+        else
+            _mechanism =
+              new (std::nothrow) sspi_client_t (_session, _options);
         alloc_assert (_mechanism);
     }
 #endif

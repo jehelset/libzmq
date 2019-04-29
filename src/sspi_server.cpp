@@ -30,6 +30,7 @@
 #include "precompiled.hpp"
 
 #include <string.h>
+#include <iostream>
 #include <string>
 
 #include "msg.hpp"
@@ -41,9 +42,13 @@
 
 #if defined(HAVE_SSPI)
 
+// std::string sspi_server_mechanism_name(const options_t &options){
+//     return "Kerberos;"
+// }
+
 zmq::sspi_server_t::sspi_server_t (session_base_t *session_,
                                        const std::string &peer_address_,
-                                       const options_t &options_) :
+                                       const options_t &options_) :                                   
     mechanism_base_t (session_, options_),
     sspi_mechanism_base_t (session_, options_),
     zap_client_t (session_, peer_address_, options_),
@@ -52,23 +57,36 @@ zmq::sspi_server_t::sspi_server_t (session_base_t *session_,
     state (recv_next_token),
     security_context_established (false)
 {
+    maj_stat =
+        AcquireCredentialsHandle(
+            (LPSTR)principal_name.c_str(),
+            (LPSTR)mechanism_name.c_str(),
+            SECPKG_CRED_INBOUND,
+            NULL,
+            NULL,
+            NULL,
+            NULL,
+            &cred,
+            &cred_expiry
+        );
+    check_retcode (maj_stat);
+    maj_stat = SEC_I_CONTINUE_NEEDED;
     // maj_stat = GSS_S_CONTINUE_NEEDED;
-    if (!options_.gss_principal.empty ()) {
-        const std::string::size_type principal_size =
-          options_.gss_principal.size ();
-        principal_name = static_cast<char *> (malloc (principal_size + 1));
-        assert (principal_name);
-        memcpy (principal_name, options_.gss_principal.c_str (),
-                principal_size + 1);
-        // gss_OID name_type = convert_nametype (options_.gss_principal_nt);
-        // if (acquire_credentials (principal_name, &cred, name_type) != 0)
-        //     maj_stat = GSS_S_FAILURE;
-    }
+    // if (!options_.gss_principal.empty ()) {
+    //     const std::string::size_type principal_size =
+    //       options_.gss_principal.size ();
+    //     principal_name = static_cast<char *> (malloc (principal_size + 1));
+    //     assert (principal_name);
+    //     memcpy (principal_name, options_.gss_principal.c_str (),
+    //             principal_size + 1);
+    //     // gss_OID name_type = convert_nametype (options_.gss_principal_nt);
+    //     // if (acquire_credentials (principal_name, &cred, name_type) != 0)
+    //     //     maj_stat = GSS_S_FAILURE;
+    // }
 }
 
 zmq::sspi_server_t::~sspi_server_t ()
 {
-    // if (cred)
     //     gss_release_cred (&min_stat, &cred);
 
     // if (target_name)
@@ -77,78 +95,77 @@ zmq::sspi_server_t::~sspi_server_t ()
 
 int zmq::sspi_server_t::next_handshake_command (msg_t *msg_)
 {
-    // if (state == send_ready) {
-    //     int rc = produce_ready (msg_);
-    //     if (rc == 0)
-    //         state = recv_ready;
+    if (state == send_ready) {
+        int rc = produce_ready (msg_);
+        if (rc == 0)
+            state = recv_ready;
 
-    //     return rc;
-    // }
+        return rc;
+    }
 
-    // if (state != send_next_token) {
-    //     errno = EAGAIN;
-    //     return -1;
-    // }
+    if (state != send_next_token) {
+        errno = EAGAIN;
+        return -1;
+    }
 
-    // if (produce_next_token (msg_) < 0)
-    //     return -1;
+    if (produce_next_token (msg_) < 0)
+        return -1;
 
-    // if (maj_stat != GSS_S_CONTINUE_NEEDED && maj_stat != GSS_S_COMPLETE)
-    //     return -1;
+    if (maj_stat != SEC_I_CONTINUE_NEEDED && maj_stat != SEC_E_OK)
+        return -1;
 
-    // if (maj_stat == GSS_S_COMPLETE) {
-    //     security_context_established = true;
-    // }
+    if (maj_stat == SEC_E_OK) 
+        security_context_established = true;
 
-    // state = recv_next_token;
+    state = recv_next_token;
 
     return 0;
 }
 
 int zmq::sspi_server_t::process_handshake_command (msg_t *msg_)
 {
-    // if (state == recv_ready) {
-    //     int rc = process_ready (msg_);
-    //     if (rc == 0)
-    //         state = connected;
+    if (state == recv_ready) {
+        int rc = process_ready (msg_);
+        if (rc == 0)
+            state = connected;
 
-    //     return rc;
-    // }
+        return rc;
+    }
 
-    // if (state != recv_next_token) {
-    //     session->get_socket ()->event_handshake_failed_protocol (
-    //       session->get_endpoint (), ZMQ_PROTOCOL_ERROR_ZMTP_UNEXPECTED_COMMAND);
-    //     errno = EPROTO;
-    //     return -1;
-    // }
+    if (state != recv_next_token) {
+        session->get_socket ()->event_handshake_failed_protocol (
+          session->get_endpoint (), ZMQ_PROTOCOL_ERROR_ZMTP_UNEXPECTED_COMMAND);
+        errno = EPROTO;
+        return -1;
+    }
 
-    // if (security_context_established) {
-    //     //  Use ZAP protocol (RFC 27) to authenticate the user.
-    //     //  Note that rc will be -1 only if ZAP is not set up, but if it was
-    //     //  requested and it does not work properly the program will abort.
-    //     bool expecting_zap_reply = false;
-    //     int rc = session->zap_connect ();
-    //     if (rc == 0) {
-    //         send_zap_request ();
-    //         rc = receive_and_process_zap_reply ();
-    //         if (rc != 0) {
-    //             if (rc == -1)
-    //                 return -1;
-    //             expecting_zap_reply = true;
-    //         }
-    //     }
-    //     state = expecting_zap_reply ? expect_zap_reply : send_ready;
-    //     return 0;
-    // }
+    if (security_context_established) {
+        //  Use ZAP protocol (RFC 27) to authenticate the user.
+        //  Note that rc will be -1 only if ZAP is not set up, but if it was
+        //  requested and it does not work properly the program will abort.
+        bool expecting_zap_reply = false;
+        int rc = session->zap_connect ();
+        if (rc == 0) {
+            send_zap_request ();
+            rc = receive_and_process_zap_reply ();
+            if (rc != 0) {
+                if (rc == -1)
+                    return -1;
+                expecting_zap_reply = true;
+            }
+        }
+        state = expecting_zap_reply ? expect_zap_reply : send_ready;
+        return 0;
+    }
 
-    // if (process_next_token (msg_) < 0)
-    //     return -1;
+    if (process_next_token (msg_) < 0)
+        return -1;
 
-    // accept_context ();
-    // state = send_next_token;
+    accept_context ();
+    state = send_next_token;
 
-    // errno_assert (msg_->close () == 0);
-    // errno_assert (msg_->init () == 0);
+    errno_assert (msg_->close () == 0);
+    errno_assert (msg_->init () == 0);
 
     return 0;
 }
@@ -158,7 +175,7 @@ void zmq::sspi_server_t::send_zap_request ()
     // gss_buffer_desc principal;
     // gss_display_name (&min_stat, target_name, &principal, NULL);
     // zap_client_t::send_zap_request (
-    //   "sspi", 6, reinterpret_cast<const uint8_t *> (principal.value),
+    //   "sspi", 4, reinterpret_cast<const uint8_t *> (principal.value),
     //   principal.length);
 
     // gss_release_buffer (&min_stat, &principal);
@@ -203,45 +220,63 @@ zmq::mechanism_t::status_t zmq::sspi_server_t::status () const
 
 int zmq::sspi_server_t::produce_next_token (msg_t *msg_)
 {
-    // if (send_tok.length != 0) { // Client expects another token
-    //     if (produce_initiate (msg_, send_tok.value, send_tok.length) < 0)
-    //         return -1;
-    //     gss_release_buffer (&min_stat, &send_tok);
-    // }
+    if (send_tok.cbBuffer != 0) { // Client expects another token
+        if (produce_initiate (msg_, send_tok.pvBuffer, send_tok.cbBuffer) < 0)
+            return -1;
+//        gss_release_buffer (&min_stat, &send_tok);
+    }
 
-    // if (maj_stat != GSS_S_COMPLETE && maj_stat != GSS_S_CONTINUE_NEEDED) {
-    //     gss_release_name (&min_stat, &target_name);
-    //     if (context != GSS_C_NO_CONTEXT)
-    //         gss_delete_sec_context (&min_stat, &context, GSS_C_NO_BUFFER);
-    //     return -1;
-    // }
+    if (maj_stat != SEC_E_OK && maj_stat != SEC_I_CONTINUE_NEEDED) {
+        //gss_release_name (&min_stat, &target_name);
+        // if (context != GSS_C_NO_CONTEXT)
+        //     gss_delete_sec_context (&min_stat, &context, GSS_C_NO_BUFFER);
+        return -1;
+    }
 
     return 0;
 }
 
 int zmq::sspi_server_t::process_next_token (msg_t *msg_)
 {
-    // if (maj_stat == GSS_S_CONTINUE_NEEDED) {
-    //     if (process_initiate (msg_, &recv_tok.value, recv_tok.length) < 0) {
-    //         if (target_name != GSS_C_NO_NAME)
-    //             gss_release_name (&min_stat, &target_name);
-    //         return -1;
-    //     }
-    // }
+    if (maj_stat == SEC_I_CONTINUE_NEEDED) {
+        recv_tok.cbBuffer = 0;
+        recv_tok.BufferType = SECBUFFER_TOKEN;
+        recv_tok.pvBuffer = NULL;
+        recv_tok_desc.ulVersion = SECBUFFER_VERSION;
+        recv_tok_desc.cBuffers = 1;
+        recv_tok_desc.pBuffers = &recv_tok;
+        if (process_initiate (msg_, &recv_tok.pvBuffer, recv_tok.cbBuffer) < 0) {
+            // if (target_name != GSS_C_NO_NAME)
+            //     gss_release_name (&min_stat, &target_name);
+            return -1;
+        }
+    }
 
     return 0;
 }
 
 void zmq::sspi_server_t::accept_context ()
 {
-//     maj_stat = gss_accept_sec_context (
-//       &init_sec_min_stat, &context, cred, &recv_tok, GSS_C_NO_CHANNEL_BINDINGS,
-//       &target_name, &doid, &send_tok, &ret_flags, NULL, NULL);
+    CtxtHandle context_new;
+    unsigned long 
+        data_rep=SECURITY_NATIVE_DREP,
+        context_attr;
+    TimeStamp expiry;
+    maj_stat = AcceptSecurityContext(
+        &cred,
+        SecIsValidHandle (&context)?&context:nullptr,
+        &recv_tok_desc,
+        ASC_REQ_CONFIDENTIALITY | ASC_REQ_INTEGRITY, //FIXME: compute based on do_encryption
+        data_rep,
+        &context_new,
+        &send_tok_desc,
+        &context_attr,
+        &expiry);
 
-//     if (recv_tok.value) {
-//         free (recv_tok.value);
-//         recv_tok.value = NULL;
-//     }
+
+    if (maj_stat != SEC_E_OK && maj_stat != SEC_I_CONTINUE_NEEDED) 
+        ; //FIXME: report error
+
 }
 
 #endif

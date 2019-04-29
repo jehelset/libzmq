@@ -608,7 +608,7 @@ int zmq::options_t::setsockopt (int option_,
                                                      &conflate);
 
             //  If libgssapi isn't installed, these options provoke EINVAL
-#ifdef HAVE_LIBGSSAPI_KRB5
+#if defined(HAVE_LIBGSSAPI_KRB5) || defined(ZMQ_HAVE_SSPI)
         case ZMQ_GSSAPI_SERVER:
             if (is_int && (value == 0 || value == 1)) {
                 as_server = value;
@@ -1046,7 +1046,7 @@ int zmq::options_t::getsockopt (int option_,
             break;
 
             //  If libgssapi isn't installed, these options provoke EINVAL
-#ifdef HAVE_LIBGSSAPI_KRB5
+#if defined(HAVE_LIBGSSAPI_KRB5) || defined(ZMQ_HAVE_SSPI)
         case ZMQ_GSSAPI_SERVER:
             if (is_int) {
                 *value = as_server && mechanism == ZMQ_GSSAPI;

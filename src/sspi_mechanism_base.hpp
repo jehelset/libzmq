@@ -37,6 +37,7 @@
 #define SECURITY_WIN32
 #include <windows.h>
 #include <sspi.h>
+#include <security.h>
 
 #include "mechanism_base.hpp"
 #include "options.hpp"
@@ -59,11 +60,11 @@ class sspi_mechanism_base_t : public virtual mechanism_base_t
   protected:
     //  Produce a context-level sspi token (INITIATE command)
     //  during security context initialization.
-    int produce_initiate (msg_t *msg_, void *data_, size_t data_len_);
+    int produce_initiate (msg_t *msg_, void *data_, unsigned long data_len_);
 
     //  Process a context-level sspi token (INITIATE command)
     //  during security context initialization.
-    int process_initiate (msg_t *msg_, void **data_, size_t &data_len_);
+    int process_initiate (msg_t *msg_, void **data_, unsigned long &data_len_);
 
     // Produce a metadata ready msg (READY) to conclude handshake
     int produce_ready (msg_t *msg_);
@@ -88,18 +89,26 @@ class sspi_mechanism_base_t : public virtual mechanism_base_t
     //                                 gss_cred_id_t *cred_,
     //                                 gss_OID name_type_);
 
+    void check_retcode(int)const;
+
   protected:
     //  Opaque sspi token for outgoing data
-    //gss_buffer_desc send_tok;
+    SecBufferDesc send_tok_desc;
+    SecBuffer     send_tok;
 
     //  Opaque sspi token for incoming data
-    //gss_buffer_desc recv_tok;
+    SecBufferDesc recv_tok_desc;
+    SecBuffer     recv_tok;
+
 
     //  Opaque sspi representation of principal
     //gss_name_t target_name;
 
     //  Human-readable principal name
-    char *principal_name;
+    std::string principal_name;
+
+    //  Human-readable mechanism name
+    std::string mechanism_name;
 
     //  Status code returned by sspi functions
     SECURITY_STATUS maj_stat;
@@ -118,10 +127,13 @@ class sspi_mechanism_base_t : public virtual mechanism_base_t
     unsigned long sspi_flags;
 
     //  Credentials used to establish security context
-    //gss_cred_id_t cred;
+    CredHandle cred;
 
     //  Opaque sspi representation of the security context
-    //gss_ctx_id_t context;
+    CtxtHandle context;
+
+    // Credential life time
+    TimeStamp cred_expiry;
 
     //  If true, use gss to encrypt messages. If false, only utilize gss for auth.
     bool do_encryption;

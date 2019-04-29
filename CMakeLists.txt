@@ -106,6 +106,38 @@ else()
   set(ZMQ_HAVE_CURVE 1)
 endif()
 
+
+# Enable gssapi 
+option(ENABLE_GSSAPI "Enable GSSAPI mechanism" OFF)
+
+if(ENABLE_GSSAPI)
+  message(STATUS "GSSAPI mechanism is enabled")
+  set(ZMQ_HAVE_GSSAPI 1)
+else()
+  message(STATUS "GSSAPI mechanism is disabled")
+endif()
+
+# Enable sspi
+option(ENABLE_SSPI "Enable SSPI mechanism" OFF)
+
+if(ENABLE_SSPI)
+  if(ENABLE_GSSAPI)
+    message(STATUS "SSPI mechanism conflicts with GSSAPI")
+  else()
+    message(STATUS "SSPI mechanism enabled")
+    find_library(SECUR32_LIBRARY Secur32)
+    if(NOT SECUR32_LIBRARY)
+      message(FATAL_ERROR
+        "Secur32 is not installed. Install it, then run CMake again") 
+    endif()
+    add_definitions(-DZMQ_HAVE_SSPI)
+    set(ZMQ_HAVE_SSPI 1)
+  endif()
+else()
+  message(STATUS "SSPI mechanism is disabled")
+endif()
+
+
 set(SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 
 if(EXISTS "${SOURCE_DIR}/.git")
@@ -1262,6 +1294,11 @@ if(BUILD_SHARED)
   if(RT_LIBRARY)
     target_link_libraries(libzmq -lrt)
   endif()
+  
+#  if(HAVE_SSPI)
+    #message(STATUS "linking secur32")
+  target_link_libraries(libzmq secur32)
+  #endif()
 endif()
 
 if(BUILD_STATIC)
@@ -1292,6 +1329,11 @@ if(BUILD_STATIC)
   if(RT_LIBRARY)
     target_link_libraries(libzmq-static -lrt)
   endif()
+
+  #if(HAVE_SSPI)
+    #message(STATUS "linking secur32")
+  target_link_libraries(libzmq-static secur32)
+  #endif()
 endif()
 
 if(BUILD_SHARED)
