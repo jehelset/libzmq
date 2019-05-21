@@ -106,13 +106,6 @@ int zmq::sspi_mechanism_base_t::encode_message (msg_t *msg_)
     if (msg_->flags () & msg_t::command)
         flags |= 0x02;
 
-    uint8_t *plaintext_buffer =
-      static_cast<uint8_t *> (malloc (msg_->size () + 1));
-    alloc_assert (plaintext_buffer);
-
-    plaintext_buffer[0] = flags;
-    memcpy (plaintext_buffer + 1, msg_->data (), msg_->size ());
-
     // plaintext.value = plaintext_buffer;
     // plaintext.length = msg_->size () + 1;
 
@@ -121,18 +114,23 @@ int zmq::sspi_mechanism_base_t::encode_message (msg_t *msg_)
     tmp_buf_desc.cBuffers = 3;
     tmp_buf_desc.pBuffers = tmp_buf.data();
     tmp_buf_desc.ulVersion = SECBUFFER_VERSION;
-    tmp_buf[0].cbBuffer = 0; //sizes.cbSecurityTrailer; FIXME
+
     tmp_buf[0].BufferType = SECBUFFER_TOKEN;
-    tmp_buf[0].pvBuffer = 0;//malloc(sizes.cbSecurityTrailer);
+    tmp_buf[0].cbBuffer = context_sizes.cbSecurityTrailer;
+    tmp_buf[0].pvBuffer = malloc(context_sizes.cbSecurityTrailer);
 
     // This buffer holds the application data.
     tmp_buf[1].BufferType = SECBUFFER_DATA;
     tmp_buf[1].cbBuffer = msg_->size () + 1;
-    tmp_buf[1].pvBuffer = plaintext_buffer;
+    tmp_buf[1].pvBuffer = malloc (msg_->size () + 1);
+    alloc_assert (static_cast<uint8_t *> (malloc (msg_->size () + 1)));
+    ((uint8_t *)(tmp_buf[1].pvBuffer))[0] = flags;
+    memcpy ((uint8_t *)tmp_buf[1].pvBuffer + 1, msg_->data (), msg_->size ());
 
     tmp_buf[2].BufferType = SECBUFFER_PADDING;
-    tmp_buf[2].cbBuffer = 0;//sizes.cbBlockSize;
+    tmp_buf[2].cbBuffer = context_sizes.cbBlockSize;
     tmp_buf[2].pvBuffer = malloc(tmp_buf[2].cbBuffer);
+
     maj_stat = EncryptMessage(&context, do_encryption ? 0 : SECQOP_WRAP_NO_ENCRYPT , &tmp_buf_desc, 0);
     zmq_assert (maj_stat == SEC_E_OK);
 
@@ -140,7 +138,7 @@ int zmq::sspi_mechanism_base_t::encode_message (msg_t *msg_)
     int rc = msg_->close ();
     zmq_assert (rc == 0);
 
-    rc = msg_->init_size (8 + 4 + tmp_buf[0].cbBuffer + tmp_buf[1].cbBuffer + tmp_buf[2].cbBuffer);
+    rc = msg_->init_size (8 + 4 + tmp_buf[0].cbBuffer+tmp_buf[1].cbBuffer+tmp_buf[2].cbBuffer);
     zmq_assert (rc == 0);
 
     uint8_t *ptr = static_cast<uint8_t *> (msg_->data ());
@@ -150,15 +148,22 @@ int zmq::sspi_mechanism_base_t::encode_message (msg_t *msg_)
     ptr += 8;
 
     // Add token length
-    put_uint32 (ptr, static_cast<uint32_t> (tmp_buf[1].cbBuffer));
+    {
+      uint32_t l=0;
+      for(auto &b:tmp_buf)
+        l+=static_cast<uint32_t>(b.cbBuffer);
+      put_uint32 (ptr, l);
+    }
     ptr += 4;
 
     // Add wrapped token value
     for(auto &b:tmp_buf)
+    {
       memcpy (ptr, b.pvBuffer, b.cbBuffer);
-    ptr += tmp_buf[1].cbBuffer;
-
-    //FIXME: release buffer - jeh
+      ptr += b.cbBuffer;
+      free(b.pvBuffer);
+      b.cbBuffer=0;
+    }
 
     return 0;
 }
@@ -231,6 +236,7 @@ int zmq::sspi_mechanism_base_t::decode_message (msg_t *msg_)
         session->get_socket ()->event_handshake_failed_protocol (
           session->get_endpoint (), ZMQ_PROTOCOL_ERROR_ZMTP_CRYPTOGRAPHIC);
         errno = EPROTO;
+        check_retcode (maj_stat) ;
         return -1;
     }
     //zmq_assert (state);
@@ -252,16 +258,17 @@ int zmq::sspi_mechanism_base_t::decode_message (msg_t *msg_)
     rc = msg_->close ();
     zmq_assert (rc == 0);
 
+    length = tmp[1].cbBuffer ;
     rc = msg_->init_size (length - 1);
     zmq_assert (rc == 0);
 
-    const uint8_t flags = static_cast<char *> (tmp[0].pvBuffer)[0];
+    const uint8_t flags = static_cast<char *> (tmp[1].pvBuffer)[0];
     if (flags & 0x01)
         msg_->set_flags (msg_t::more);
     if (flags & 0x02)
         msg_->set_flags (msg_t::command);
 
-    memcpy (msg_->data (), static_cast<char *> (tmp[0].pvBuffer) + 1, length - 1);
+    memcpy (msg_->data (), static_cast<char *> (tmp[1].pvBuffer) + 1, length - 1);
 
     //gss_release_buffer (&min_stat, &plaintext);
     //free (wrapped.value);
@@ -462,7 +469,7 @@ void zmq::sspi_mechanism_base_t::check_retcode (int retcode) const
   if(retcode==SEC_E_OK)
     return;
   switch(retcode){
-    #define ZMQ_MACRO(id) case SEC_E_##id:  zmq_abort (#id);
+    #define ZMQ_MACRO(id) case SEC_E_##id:  printf (#id ## "\n"); break; 
     ZMQ_MACRO(INSUFFICIENT_MEMORY)
     ZMQ_MACRO(INVALID_HANDLE)
     ZMQ_MACRO(UNSUPPORTED_FUNCTION)
@@ -478,12 +485,12 @@ void zmq::sspi_mechanism_base_t::check_retcode (int retcode) const
     ZMQ_MACRO(LOGON_DENIED)
     ZMQ_MACRO(UNKNOWN_CREDENTIALS)
     ZMQ_MACRO(NO_CREDENTIALS)
-    ZMQ_MACRO(MESSAGE_ALTERED)
+    ZMQ_MACRO(INCOMPLETE_MESSAGE)
     ZMQ_MACRO(OUT_OF_SEQUENCE)
+    ZMQ_MACRO(MESSAGE_ALTERED)
     ZMQ_MACRO(NO_AUTHENTICATING_AUTHORITY)
     ZMQ_MACRO(BAD_PKGID)
     ZMQ_MACRO(CONTEXT_EXPIRED)
-    ZMQ_MACRO(INCOMPLETE_MESSAGE)
     ZMQ_MACRO(INCOMPLETE_CREDENTIALS)
     ZMQ_MACRO(BUFFER_TOO_SMALL)
     ZMQ_MACRO(WRONG_PRINCIPAL)

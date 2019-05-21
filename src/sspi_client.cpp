@@ -79,6 +79,13 @@ zmq::sspi_client_t::sspi_client_t (session_base_t *session_,
             &cred,
             &cred_expiry
         );
+        
+    recv_tok_desc.ulVersion = SECBUFFER_VERSION;
+    recv_tok_desc.cBuffers = 1;
+    recv_tok_desc.pBuffers = &recv_tok;
+    recv_tok.BufferType = SECBUFFER_TOKEN;
+    recv_tok.cbBuffer = 0;
+    recv_tok.pvBuffer = NULL;
 }
 
 zmq::sspi_client_t::~sspi_client_t ()
@@ -196,27 +203,22 @@ int zmq::sspi_client_t::initialize_context ()
     //     if (maj != GSS_S_COMPLETE)
     //         return -1;
     // }
-    
-    recv_tok_desc.ulVersion = SECBUFFER_VERSION;
-    recv_tok_desc.cBuffers = 1;
-    recv_tok_desc.pBuffers = &recv_tok;
-    recv_tok.BufferType = SECBUFFER_TOKEN;
-    recv_tok.cbBuffer = 0;
-    recv_tok.pvBuffer = NULL;
-
     send_tok_desc.ulVersion = SECBUFFER_VERSION;
     send_tok_desc.cBuffers = 1;
     send_tok_desc.pBuffers = &send_tok;
     send_tok.BufferType = SECBUFFER_TOKEN;
+    send_tok.cbBuffer = 0;
     send_tok.pvBuffer = NULL;
     
-    ULONG attribs = ISC_REQ_ALLOCATE_MEMORY;
-    std::vector<char> service_name_buffer(std::begin(service_name),std::end(service_name));
+    ULONG attribs;
+    std::vector<char> service_name_buffer(service_name.size()+1);
+    std::copy(std::begin(service_name),std::end(service_name),std::begin(service_name_buffer));
+    service_name_buffer.back()='\0';
     maj_stat = InitializeSecurityContext(
       &cred,
       SecIsValidHandle(&context) ? &context : NULL,
       service_name_buffer.data(),
-      0,
+      ISC_REQ_CONFIDENTIALITY | ISC_REQ_INTEGRITY | ISC_REQ_MUTUAL_AUTH | ISC_REQ_ALLOCATE_MEMORY,
       0,
       SECURITY_NATIVE_DREP,
       recv_tok.cbBuffer ? &recv_tok_desc : NULL,
@@ -226,24 +228,30 @@ int zmq::sspi_client_t::initialize_context ()
       &attribs,
       &cred_expiry
     );
-    printf ("InitializeSecurityContext = %d\n",maj_stat);
-    check_retcode (maj_stat);
+    printf ("client - InitializeSecurityContext = %d\n",maj_stat);
+    if (maj_stat < 0)
+        check_retcode (maj_stat);
+    else if( maj_stat != SEC_I_CONTINUE_NEEDED)
+    {
+        int query_stat = QueryContextAttributes ( &context, SECPKG_ATTR_SIZES, &context_sizes);
+        printf ("client - QueryContextAttributes = %d\n",query_stat);
+        if (query_stat < 0)
+            check_retcode (query_stat);
+    }   
     return 0;
 }
 
 int zmq::sspi_client_t::produce_next_token (msg_t *msg_)
 {
-    if (send_tok.cbBuffer != 0) { // Server expects another token
+    if (send_tok.pvBuffer != 0) { // Server expects another token
         if (produce_initiate (msg_, send_tok.pvBuffer, send_tok.cbBuffer) < 0) {
-            // gss_release_buffer (&min_stat, &send_tok);
-            // gss_release_name (&min_stat, &target_name);
+            FreeContextBuffer(send_tok.pvBuffer);
             return -1;
         }
     }
-    // gss_release_buffer (&min_stat, &send_tok);
+    FreeContextBuffer(send_tok.pvBuffer);
 
     if (maj_stat != SEC_E_OK && maj_stat != SEC_I_CONTINUE_NEEDED) {
-        //gss_release_name (&min_stat, &target_name);
         //if (context != SEC_NO_CONTEXT)
           //;//  gss_delete_sec_context (&min_stat, &context, GSS_C_NO_BUFFER);
         return -1;
@@ -256,7 +264,6 @@ int zmq::sspi_client_t::process_next_token (msg_t *msg_)
 {
     if (maj_stat == SEC_I_CONTINUE_NEEDED) {
         if (process_initiate (msg_, &recv_tok.pvBuffer, recv_tok.cbBuffer) < 0) {
-           // gss_release_name (&min_stat, &target_name);
             return -1;
         }
         //token_ptr = &recv_tok;

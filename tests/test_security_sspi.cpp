@@ -120,15 +120,23 @@ static void zap_handler (void *handler_)
         char *address = s_recv (handler_);
         char *routing_id = s_recv (handler_);
         char *mechanism = s_recv (handler_);
-        char *principal = s_recv (handler_);
+        //char *principal = s_recv (handler_);
+
+        CtxtHandle context;
+        SecInvalidateHandle(&context);
+        {
+            int size = zmq_recv (handler_, (char *)&context, sizeof(decltype(context)), 0);
+            if (size == -1 || size != sizeof(decltype(context)))
+                SecInvalidateHandle(&context);
+        }
 
         assert (streq (version, "1.0"));
-        assert (streq (mechanism, "GSSAPI"));
+        assert (streq (mechanism, "SSPI"));
 
         s_sendmore (handler_, version);
         s_sendmore (handler_, sequence);
 
-        if (!zap_deny_all) {
+        if (!zap_deny_all && SecIsValidHandle(&context)) {
             s_sendmore (handler_, "200");
             s_sendmore (handler_, "OK");
             s_sendmore (handler_, "anonymous");
@@ -147,7 +155,7 @@ static void zap_handler (void *handler_)
         free (address);
         free (routing_id);
         free (mechanism);
-        free (principal);
+        //free (principal);
     }
     zmq_close (handler_);
 }

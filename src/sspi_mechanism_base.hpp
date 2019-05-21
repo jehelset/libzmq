@@ -132,6 +132,9 @@ class sspi_mechanism_base_t : public virtual mechanism_base_t
     //  Opaque sspi representation of the security context
     CtxtHandle context;
 
+    //  Various sizes related to context
+    SecPkgContext_Sizes context_sizes;
+
     // Credential life time
     TimeStamp cred_expiry;
 

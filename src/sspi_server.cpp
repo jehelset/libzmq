@@ -174,11 +174,14 @@ void zmq::sspi_server_t::send_zap_request ()
 {
     // gss_buffer_desc principal;
     // gss_display_name (&min_stat, target_name, &principal, NULL);
-    // zap_client_t::send_zap_request (
-    //   "sspi", 4, reinterpret_cast<const uint8_t *> (principal.value),
-    //   principal.length);
+    zap_client_t::send_zap_request (
+      "SSPI", 4, (uint8_t*)&context , sizeof(decltype(context))
+    ) ;
 
-    // gss_release_buffer (&min_stat, &principal);
+//     ) reinterpret_cast<const uint8_t *> (principal.value),
+//       principal.length);
+
+//     gss_release_buffer (&min_stat, &principal);
 }
 
 int zmq::sspi_server_t::encode (msg_t *msg_)
@@ -220,10 +223,10 @@ zmq::mechanism_t::status_t zmq::sspi_server_t::status () const
 
 int zmq::sspi_server_t::produce_next_token (msg_t *msg_)
 {
-    if (send_tok.cbBuffer != 0) { // Client expects another token
+    if (send_tok.pvBuffer != 0) { // Client expects another token
         if (produce_initiate (msg_, send_tok.pvBuffer, send_tok.cbBuffer) < 0)
             return -1;
-//        gss_release_buffer (&min_stat, &send_tok);
+        FreeContextBuffer(send_tok.pvBuffer);
     }
 
     if (maj_stat != SEC_E_OK && maj_stat != SEC_I_CONTINUE_NEEDED) {
@@ -262,21 +265,40 @@ void zmq::sspi_server_t::accept_context ()
         data_rep=SECURITY_NATIVE_DREP,
         context_attr;
     TimeStamp expiry;
+
+    send_tok.BufferType= SECBUFFER_TOKEN;
+    
+    send_tok.cbBuffer= 0; //std::numeric_limits<decltype(send_tok.cbBuffer)>::max();
+    send_tok.pvBuffer= nullptr;
+
+    send_tok_desc.ulVersion= SECBUFFER_VERSION;
+    send_tok_desc.cBuffers= 1;
+    send_tok_desc.pBuffers= &send_tok;
+
     maj_stat = AcceptSecurityContext(
         &cred,
         SecIsValidHandle (&context)?&context:nullptr,
         &recv_tok_desc,
-        ASC_REQ_CONFIDENTIALITY | ASC_REQ_INTEGRITY, //FIXME: compute based on do_encryption
+        ASC_REQ_CONFIDENTIALITY | ASC_REQ_INTEGRITY | ASC_REQ_MUTUAL_AUTH | ASC_REQ_ALLOCATE_MEMORY, //FIXME: compute based on do_encryption
         data_rep,
-        &context_new,
+        &context,
         &send_tok_desc,
         &context_attr,
         &expiry);
 
+    printf ("server - AcceptSecurityContext = %d\n",maj_stat);
+    if (maj_stat < 0 || !SecIsValidHandle(&context) )
+        check_retcode (maj_stat);
 
     if (maj_stat != SEC_E_OK && maj_stat != SEC_I_CONTINUE_NEEDED) 
         ; //FIXME: report error
-
+    else if ( maj_stat != SEC_I_CONTINUE_NEEDED )
+    {
+        int query_stat = QueryContextAttributes ( &context, SECPKG_ATTR_SIZES, &context_sizes);
+        printf ("servier - QueryContextAttributes = %d\n", query_stat);
+        if (query_stat < 0)
+            check_retcode (query_stat);
+    }
 }
 
 #endif
