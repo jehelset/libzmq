@@ -237,6 +237,11 @@ int zmq::sspi_client_t::initialize_context ()
         printf ("client - QueryContextAttributes = %d\n",query_stat);
         if (query_stat < 0)
             check_retcode (query_stat);
+            
+        //query_stat = QueryContextAttributes ( &context, SECPKG_ATTR_STREAM_SIZES, &context_stream_sizes);
+        //printf ("client - QueryContextAttributes = %d\n", query_stat);
+        //if (query_stat < 0)
+        //    check_retcode (query_stat);
     }   
     return 0;
 }

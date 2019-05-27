@@ -211,9 +211,11 @@ int zmq::sspi_mechanism_base_t::decode_message (msg_t *msg_)
 
     std::array<SecBuffer,2> tmp;
 
+    //FIXME: use inplace instead - jeh
+    std::vector<uint8_t> buf((uint8_t *)ptr,((uint8_t *)ptr)+length);
     // This buffer is for SSPI.
     tmp[0].BufferType = SECBUFFER_STREAM;
-    tmp[0].pvBuffer = (void *)ptr;
+    tmp[0].pvBuffer = (void *)buf.data();
     tmp[0].cbBuffer = length;
 
     // This buffer holds the application data.
@@ -246,7 +248,6 @@ int zmq::sspi_mechanism_base_t::decode_message (msg_t *msg_)
     // const size_t alloc_length = wrapped.length ? wrapped.length : 1;
     // wrapped.value = static_cast<char *> (malloc (alloc_length));
     // alloc_assert (wrapped.value);
-
     if (length) {
         //memcpy (wrapped.value, ptr, wrapped.length);
         ptr += length;

@@ -134,6 +134,7 @@ class sspi_mechanism_base_t : public virtual mechanism_base_t
 
     //  Various sizes related to context
     SecPkgContext_Sizes context_sizes;
+    SecPkgContext_StreamSizes context_stream_sizes;
 
     // Credential life time
     TimeStamp cred_expiry;

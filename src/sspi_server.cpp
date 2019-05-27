@@ -298,6 +298,10 @@ void zmq::sspi_server_t::accept_context ()
         printf ("servier - QueryContextAttributes = %d\n", query_stat);
         if (query_stat < 0)
             check_retcode (query_stat);
+        //query_stat = QueryContextAttributes ( &context, SECPKG_ATTR_STREAM_SIZES, &context_stream_sizes);
+        //printf ("servier - QueryContextAttributes = %d\n", query_stat);
+        //if (query_stat < 0)
+        //    check_retcode (query_stat);
     }
 }
 
