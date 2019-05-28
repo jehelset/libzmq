@@ -172,16 +172,7 @@ int zmq::sspi_server_t::process_handshake_command (msg_t *msg_)
 
 void zmq::sspi_server_t::send_zap_request ()
 {
-    // gss_buffer_desc principal;
-    // gss_display_name (&min_stat, target_name, &principal, NULL);
-    zap_client_t::send_zap_request (
-      "SSPI", 4, (uint8_t*)&context , sizeof(decltype(context))
-    ) ;
-
-//     ) reinterpret_cast<const uint8_t *> (principal.value),
-//       principal.length);
-
-//     gss_release_buffer (&min_stat, &principal);
+    zap_client_t::send_zap_request ("SSPI", 4, (uint8_t*)&context , sizeof(decltype(context)));
 }
 
 int zmq::sspi_server_t::encode (msg_t *msg_)
@@ -230,7 +221,6 @@ int zmq::sspi_server_t::produce_next_token (msg_t *msg_)
     }
 
     if (maj_stat != SEC_E_OK && maj_stat != SEC_I_CONTINUE_NEEDED) {
-        //gss_release_name (&min_stat, &target_name);
         // if (context != GSS_C_NO_CONTEXT)
         //     gss_delete_sec_context (&min_stat, &context, GSS_C_NO_BUFFER);
         return -1;
@@ -286,7 +276,6 @@ void zmq::sspi_server_t::accept_context ()
         &context_attr,
         &expiry);
 
-    printf ("server - AcceptSecurityContext = %d\n",maj_stat);
     if (maj_stat < 0 || !SecIsValidHandle(&context) )
         check_retcode (maj_stat);
 
@@ -295,13 +284,8 @@ void zmq::sspi_server_t::accept_context ()
     else if ( maj_stat != SEC_I_CONTINUE_NEEDED )
     {
         int query_stat = QueryContextAttributes ( &context, SECPKG_ATTR_SIZES, &context_sizes);
-        printf ("servier - QueryContextAttributes = %d\n", query_stat);
         if (query_stat < 0)
             check_retcode (query_stat);
-        //query_stat = QueryContextAttributes ( &context, SECPKG_ATTR_STREAM_SIZES, &context_stream_sizes);
-        //printf ("servier - QueryContextAttributes = %d\n", query_stat);
-        //if (query_stat < 0)
-        //    check_retcode (query_stat);
     }
 }
 

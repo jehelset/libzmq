@@ -228,20 +228,13 @@ int zmq::sspi_client_t::initialize_context ()
       &attribs,
       &cred_expiry
     );
-    printf ("client - InitializeSecurityContext = %d\n",maj_stat);
     if (maj_stat < 0)
         check_retcode (maj_stat);
     else if( maj_stat != SEC_I_CONTINUE_NEEDED)
     {
         int query_stat = QueryContextAttributes ( &context, SECPKG_ATTR_SIZES, &context_sizes);
-        printf ("client - QueryContextAttributes = %d\n",query_stat);
         if (query_stat < 0)
             check_retcode (query_stat);
-            
-        //query_stat = QueryContextAttributes ( &context, SECPKG_ATTR_STREAM_SIZES, &context_stream_sizes);
-        //printf ("client - QueryContextAttributes = %d\n", query_stat);
-        //if (query_stat < 0)
-        //    check_retcode (query_stat);
     }   
     return 0;
 }
